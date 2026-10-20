@@ -16,6 +16,9 @@
 
 -module(brod_group_coordinator).
 
+%% Capability checked by periodic-commit callers against the loaded module.
+-revoked_offsets_discarded(true).
+
 -behaviour(gen_server).
 
 -export([ ack/5
@@ -642,7 +645,11 @@ continue_stabilization({stop, ?fenced_instance_id, _State} = Stop,
   Stop;
 continue_stabilization({ok, State2}, AttemptNo, Reason,
                        RejoinDelaySeconds) ->
-  State3 = State2#state{is_in_group = false},
+  %% The final old-generation commit was attempted (or cannot be made).
+  %% These acknowledgements belong to revoked assignments. Retaining them
+  %% lets a later timer or shutdown overwrite another member's checkpoint
+  %% using this member's new, valid generation.
+  State3 = State2#state{is_in_group = false, acked_offsets = []},
 
   %% 4. Clean up state based on the last failure reason
   State4 = maybe_reset_member_id(State3, Reason),
